@@ -8,7 +8,19 @@ import errno
 
 def get_input():
   parser = argparse.ArgumentParser(description='Glacier backup and dupcheck script')
-  parser.add_argument('-d', action='store', dest='path', help='Directory to dupcheck')
+  parser.add_argument(
+                      '-d',
+                      action='store',
+                      dest='path',
+                      help='Directory to dupcheck'
+                      )
+  parser.add_argument(
+                      '-s',
+                      action='store',
+                      dest='dbfile',
+                      default='files.db',
+                      help='Use file other than files.db'
+                      )
   results = parser.parse_args()
   if not (results.path):
     parser.error('no path provided')
