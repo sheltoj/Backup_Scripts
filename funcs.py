@@ -1,10 +1,15 @@
+import os
+import uuid
+import time
+import hashlib
+
 def dir_list(path):
 	fileNames = []
 	start = time.time()
 	for root, dirs, files in os.walk(path):
 		if files:
 			for item in files:
-				fileNames.append(root + "\\" + item)
+				fileNames.append(root + "\" + item)
 	end = time.time()
 	return fileNames
 
