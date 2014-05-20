@@ -7,6 +7,7 @@ import argparse
 import errno
 import sqlite3
 import time
+import collections
 
 def get_input():
   parser = argparse.ArgumentParser(description='Glacier backup and dupcheck script')
@@ -23,8 +24,14 @@ def get_input():
                       default='files.db',
                       help='Use file other than files.db'
                       )
+  parser.add_argument(
+                      '--dupcheck',
+                      action='store_true',
+                      dest='dupcheck',
+                      help='only do a dupcheck against the db'
+                      )
   results = parser.parse_args()
-  if not (results.path):
+  if not (results.path) and not (results.dupcheck):
     parser.error('no path provided')
   return results
 
@@ -79,12 +86,38 @@ def insert_file(attributes,dbFile):
   conn.commit()
   conn.close()
 
-def lookup_file(path,dbFile):
+def lookup_file_by_path(path,dbFile):
   conn = sqlite3.connect(dbFile)
   c = conn.cursor()
   c.execute('''SELECT * FROM files where path = ?''', ( [path] ) )
   data = c.fetchone()
   return data
+  conn.close
+
+def lookup_file_by_md5(md5,dbFile):
+  matches = []
+  conn = sqlite3.connect(dbFile)
+  c = conn.cursor()
+  for files in c.execute('''SELECT path, size, modification_time FROM files where md5 = ?''', ( [md5] ) ):
+    matches.append(files)
+  return matches
+  conn.close
+
+def dup_check(dbFile):
+  md5Sums = []
+  data = {}
+  conn = sqlite3.connect(dbFile)
+  c = conn.cursor()
+  for md5Sum in c.execute('''SELECT md5 from files'''):
+    md5Sums.append(md5Sum[0])
+  conn.close
+
+  collection = collections.Counter(md5Sums)
+  dupes = [i for i in collection if collection[i]>1]
+  for md5 in dupes:
+    data[md5] = lookup_file_by_md5(md5,dbFile)
+  return data
+
 
 
 
