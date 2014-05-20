@@ -19,7 +19,7 @@ def get_input():
   parser.add_argument(
                       '-s',
                       action='store',
-                      dest='dbfile',
+                      dest='dbFile',
                       default='files.db',
                       help='Use file other than files.db'
                       )
