@@ -41,7 +41,7 @@ def dir_list(path):
   for root, dirs, files in os.walk(path):
     if files:
       for item in files:
-        if platform.platform() == "Windows":
+        if platform.system() == "Windows":
           fileNames.append(root + "\\" + item)
         else:
           fileNames.append(root + "/" + item)

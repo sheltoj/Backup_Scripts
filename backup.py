@@ -4,7 +4,8 @@ import platform
 arguments = get_input()
 
 #create database where we store all file and upload info
-if platform.platform() == "Windows":
+if platform.system() == "Windows":
+  print("Windows!")
   dbFile = ((os.path.split(os.path.realpath(__file__)))[0] + "\\" + arguments.dbFile)
 else:
   dbFile = ((os.path.split(os.path.realpath(__file__)))[0] + "/" + arguments.dbFile)
