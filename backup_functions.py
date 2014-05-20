@@ -69,19 +69,22 @@ def init_database(dbfile):
   conn.commit
   conn.close
 
-def insert_host(attributes,dbFile):
+def insert_file(attributes,dbFile):
   conn = sqlite3.connect(dbFile)
   c = conn.cursor()
-  print attributes['modification_time']
   c.execute('''INSERT INTO files ("path", "name", "size", "md5", "modification_time")
            VALUES (?,?,?,?,?)''', 
            ( attributes['path'], attributes['name'], attributes['size'] , attributes['md5'], attributes['modification_time'] )
            )
-
   conn.commit()
   conn.close()
 
-
+def lookup_file(path,dbFile):
+  conn = sqlite3.connect(dbFile)
+  c = conn.cursor()
+  c.execute('''SELECT * FROM files where path = ?''', ( [path] ) )
+  data = c.fetchone()
+  return data
 
 
 
