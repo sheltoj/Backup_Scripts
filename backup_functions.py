@@ -10,6 +10,8 @@ def get_input():
   parser.add_argument('-d', action='store', dest='path',
                       help='Directory to dupcheck')
   results = parser.parse_args()
+  if not (results.path):
+    parser.error('no path provided')
   return results
 
 def dir_list(path):
