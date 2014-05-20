@@ -4,9 +4,9 @@ arguments = get_input()
 
 fileNames = dir_list(arguments.path)
 
-for i in range(0, 100):
+for files in fileNames:
   try:
-    test = get_attributes(fileNames[i])
+    test = get_attributes(files)
     print(test)
   except Exception, e:
-    print("error on " + fileNames[i] + " " + str(e))
+    print("error on " + files + " " + str(e))
