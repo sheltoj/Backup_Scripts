@@ -1,7 +1,10 @@
+#!/usr/bin/env python
 import os
 import uuid
 import time
 import hashlib
+
+path = "~"
 
 def dir_list(path):
   fileNames = []
@@ -13,12 +16,11 @@ def dir_list(path):
   end = time.time()
   return fileNames
 
-def file_md5(fileName)
+def file_md5(fileName):
   fileHandle = open(fileName,'rb')
   fileContents = fileHandle.read()
   fileHash = hashlib.md5(open(fileName).read()).hexdigest()
   return fileHash
-
 
 def get_attributes(fileName):
   attributes = {}
@@ -29,10 +31,9 @@ def get_attributes(fileName):
   attributes['md5'] = hashlib.md5(open(fileNames[0],'rb').read()).hexdigest()
   return attributes	
 
-
 for i in range(0, 100):
   try:
     test = get_attributes(fileNames[i])
-  print(test)
-    except:
-  print("error on " + fileNames[i])
+    print(test)
+  except:
+    print("error on " + fileNames[i])
