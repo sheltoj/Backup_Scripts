@@ -7,16 +7,24 @@ dbFile = ((os.path.split(os.path.realpath(__file__)))[0] + "/" + arguments.dbFil
 if not os.path.isfile(dbFile):
   init_database(dbFile)
 
+#check for and display files with duplicate md5 hashes
+if arguments.dupcheck:
+  dupes = dup_check(dbFile)
+  for key, value in dupes.iteritems():
+    print (key)
+    for files in value:
+      print "  " + files[0] + ",  " + str(files[1]) + "  bytes"
+  exit(0)
+
 #find all files in path, this can take some time
 fileNames = dir_list(arguments.path)
 
 for files in fileNames:
   try:
-    fileInfo = lookup_file(files,dbFile)
+    fileInfo = lookup_file_by_path(files,dbFile)
     if fileInfo is None:
       attributes = get_attributes(files)
       insert_file(attributes,dbFile)
-#    print(test)
   except Exception, e:
     print("error on " + files + " " + str(e))
 
