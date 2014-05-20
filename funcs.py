@@ -3,17 +3,23 @@ import os
 import uuid
 import time
 import hashlib
+import argparse
 
-path = "/Users/thomascate"
+def get_input():
+  parser = argparse.ArgumentParser(description='Glacier backup and dupcheck script')
+
+  parser.add_argument('-d', action='store', dest='path',
+                      help='Directory to dupcheck')
+
+  results = parser.parse_args()
+  return results
 
 def dir_list(path):
   fileNames = []
-  start = time.time()
   for root, dirs, files in os.walk(path):
     if files:
       for item in files:
         fileNames.append(root + "/" + item)
-  end = time.time()
   return fileNames
 
 def file_md5(fileName):
@@ -30,12 +36,3 @@ def get_attributes(fileName):
   attributes['uuid'] = uuid.uuid4()
   attributes['md5'] = hashlib.md5(open(fileNames[0],'rb').read()).hexdigest()
   return attributes	
-
-fileNames = dir_list(path)
-
-for i in range(0, 100):
-  try:
-    test = get_attributes(fileNames[i])
-    print(test)
-  except:
-    print("error on " + fileNames[i])
