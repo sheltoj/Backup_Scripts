@@ -49,6 +49,7 @@ def get_attributes(fileName):
   attributes['size'] = os.path.getsize(fileName)
   attributes['uuid'] = uuid.uuid4()
   attributes['md5'] = hashlib.md5(open(fileName,'rb').read()).hexdigest()
+  attributes['modification_time'] = os.stat(fileName).st_mtime
   return attributes	
 
 def init_database(dbfile):
@@ -71,8 +72,11 @@ def init_database(dbfile):
 def insert_host(attributes,dbFile):
   conn = sqlite3.connect(dbFile)
   c = conn.cursor()
-  print (type(attributes['name']))
-  c.execute('''INSERT INTO files (path, name) VALUES (?,?)''', ( attributes['path'], attributes['name'] ) )
+  print attributes['modification_time']
+  c.execute('''INSERT INTO files ("path", "name", "size", "md5", "modification_time")
+           VALUES (?,?,?,?,?)''', 
+           ( attributes['path'], attributes['name'], attributes['size'] , attributes['md5'], attributes['modification_time'] )
+           )
 
   conn.commit()
   conn.close()
