@@ -8,6 +8,7 @@ import errno
 import sqlite3
 import time
 import collections
+import platform
 
 def get_input():
   parser = argparse.ArgumentParser(description='Glacier backup and dupcheck script')
@@ -40,7 +41,10 @@ def dir_list(path):
   for root, dirs, files in os.walk(path):
     if files:
       for item in files:
-        fileNames.append(root + "/" + item)
+        if platform.platform() == "Windows":
+          fileNames.append(root + "\\" + item)
+        else:
+          fileNames.append(root + "/" + item)
   return fileNames
 
 def file_md5(fileName):
