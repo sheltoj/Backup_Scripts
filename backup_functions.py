@@ -4,11 +4,11 @@ import uuid
 import time
 import hashlib
 import argparse
+import errno
 
 def get_input():
   parser = argparse.ArgumentParser(description='Glacier backup and dupcheck script')
-  parser.add_argument('-d', action='store', dest='path',
-                      help='Directory to dupcheck')
+  parser.add_argument('-d', action='store', dest='path', help='Directory to dupcheck')
   results = parser.parse_args()
   if not (results.path):
     parser.error('no path provided')
@@ -34,5 +34,5 @@ def get_attributes(fileName):
   attributes['name'] = os.path.basename(fileName)
   attributes['size'] = os.path.getsize(fileName)
   attributes['uuid'] = uuid.uuid4()
-  attributes['md5'] = hashlib.md5(open(fileNames[0],'rb').read()).hexdigest()
+  attributes['md5'] = hashlib.md5(open(fileName,'rb').read()).hexdigest()
   return attributes	
