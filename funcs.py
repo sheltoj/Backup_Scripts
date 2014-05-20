@@ -7,10 +7,8 @@ import argparse
 
 def get_input():
   parser = argparse.ArgumentParser(description='Glacier backup and dupcheck script')
-
   parser.add_argument('-d', action='store', dest='path',
                       help='Directory to dupcheck')
-
   results = parser.parse_args()
   return results
 
