@@ -54,6 +54,7 @@ def file_md5(fileName):
   return fileHash
 
 def get_attributes(fileName):
+  print("getting attributes for " + fileName)
   attributes = {}
   attributes['path'] = fileName
   attributes['name'] = os.path.basename(fileName)
