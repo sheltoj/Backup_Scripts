@@ -12,8 +12,10 @@ fileNames = dir_list(arguments.path)
 
 for files in fileNames:
   try:
-    test = get_attributes(files)
-    insert_host(test,dbFile)
+    fileInfo = lookup_file(files,dbFile)
+    if fileInfo is None:
+      attributes = get_attributes(files)
+      insert_file(attributes,dbFile)
 #    print(test)
   except Exception, e:
     print("error on " + files + " " + str(e))
