@@ -22,7 +22,11 @@ if arguments.dupcheck:
   exit(0)
 
 #find all files in path, this can take some time
+start = time.time()
+if arguments.verbose: print("walking directory tree") 
 fileNames = dir_list(arguments.path)
+end = time.time() - start
+if arguments.verbose: print("took ") + str(end) + (" seconds")
 
 for files in fileNames:
   try:
