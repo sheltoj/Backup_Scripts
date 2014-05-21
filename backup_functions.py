@@ -31,6 +31,12 @@ def get_input():
                       dest='dupcheck',
                       help='only do a dupcheck against the db'
                       )
+  parser.add_argument(
+                      '-v',
+                      action='store_true',
+                      dest='verbose',
+                      help='enable verbose logging'
+                      )
   results = parser.parse_args()
   if not (results.path) and not (results.dupcheck):
     parser.error('no path provided')
