@@ -47,11 +47,16 @@ def dir_list(path):
           fileNames.append(root + "/" + item)
   return fileNames
 
-def file_md5(fileName):
-  fileHandle = open(fileName,'rb')
-  fileContents = fileHandle.read()
-  fileHash = hashlib.md5(open(fileName).read()).hexdigest()
-  return fileHash
+def file_md5(fileName, block_size=2**20):
+    fileHandle = open(fileName,'rb')
+    md5 = hashlib.md5()
+    while True:
+        data = fileHandle.read(block_size)
+        if not data:
+            break
+        md5.update(data)
+    fileHandle.close
+    return md5.hexdigest()
 
 def get_attributes(fileName):
   print("getting attributes for " + fileName)
