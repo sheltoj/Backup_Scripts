@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 from backup_functions import *
 import platform
 arguments = get_input()
