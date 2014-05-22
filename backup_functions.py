@@ -55,15 +55,15 @@ def dir_list(path):
   return fileNames
 
 def file_md5(fileName, block_size=4194304):
-    fileHandle = open(fileName,'rb')
-    md5 = hashlib.md5()
-    while True:
-        data = fileHandle.read(block_size)
-        if not data:
-            break
-        md5.update(data)
-    fileHandle.close
-    return md5.hexdigest()
+  fileHandle = open(fileName,'rb')
+  md5 = hashlib.md5()
+  while True:
+    data = fileHandle.read(block_size)
+    if not data:
+      break
+    md5.update(data)
+  fileHandle.close
+  return md5.hexdigest()
 
 def get_attributes(fileName):
   print("getting attributes for " + fileName)
@@ -76,8 +76,8 @@ def get_attributes(fileName):
   attributes['modification_time'] = os.stat(fileName).st_mtime
   return attributes	
 
-def init_database(dbfile):
-  conn = sqlite3.connect(dbfile)
+def init_database(dbFile):
+  conn = sqlite3.connect(dbFile)
   c = conn.cursor()
   c.execute('''CREATE TABLE files (
                                    "path" TEXT UNIQUE NOT NULL,
