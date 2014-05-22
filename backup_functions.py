@@ -9,7 +9,7 @@ import sqlite3
 import time
 import collections
 import platform
-import scandir
+from scandir import *
 
 def get_input():
   parser = argparse.ArgumentParser(description='Glacier backup and dupcheck script')
@@ -45,7 +45,7 @@ def get_input():
 
 def dir_list(path):
   fileNames = []
-  for root, dirs, files in scandir.walk(path):
+  for root, dirs, files in walk(path):
     if files:
       for item in files:
         if platform.system() == "Windows":
