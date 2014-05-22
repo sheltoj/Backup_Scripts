@@ -32,7 +32,10 @@ for files in fileNames:
   try:
     fileInfo = lookup_file_by_path(files,dbFile)
     if fileInfo is None:
+      start = time.time()
       attributes = get_attributes(files)
+      end = time.time() - start
+      if arguments.verbose: print("finished in ") + str(end) + (" seconds")
       insert_file(attributes,dbFile)
   except Exception, e:
     print("error on " + files + " " + str(e))
