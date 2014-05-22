@@ -54,7 +54,7 @@ def dir_list(path):
           fileNames.append(root + "/" + item)
   return fileNames
 
-def file_md5(fileName, block_size=2**20):
+def file_md5(fileName, block_size=4194304):
     fileHandle = open(fileName,'rb')
     md5 = hashlib.md5()
     while True:
@@ -72,7 +72,7 @@ def get_attributes(fileName):
   attributes['name'] = os.path.basename(fileName)
   attributes['size'] = os.path.getsize(fileName)
   attributes['uuid'] = uuid.uuid4()
-  attributes['md5'] = hashlib.md5(open(fileName,'rb').read()).hexdigest()
+  attributes['md5'] = file_md5(fileName)
   attributes['modification_time'] = os.stat(fileName).st_mtime
   return attributes	
 
