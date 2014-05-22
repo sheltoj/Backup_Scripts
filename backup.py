@@ -1,14 +1,14 @@
 #!/usr/bin/env python
 from backup_functions import *
 import platform
+import sys
 arguments = get_input()
 
 #create database where we store all file and upload info
 if platform.system() == "Windows":
-  dbFile = ((os.path.split(os.path.realpath(__file__)))[0] + "\\" + arguments.dbFile)
+  dbFile = (os.path.dirname(os.path.realpath(sys.argv[0])) + "\\" + arguments.dbFile)
 else:
-  dbFile = ((os.path.split(os.path.realpath(__file__)))[0] + "/" + arguments.dbFile)
-  
+  dbFile = ((os.path.abspath(os.path.dirname(sys.executable)))[0] + "/" + arguments.dbFile)
 if not os.path.isfile(dbFile):
   init_database(dbFile)
 
