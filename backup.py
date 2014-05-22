@@ -8,7 +8,7 @@ arguments = get_input()
 if platform.system() == "Windows":
   dbFile = (os.path.dirname(os.path.realpath(sys.argv[0])) + "\\" + arguments.dbFile)
 else:
-  dbFile = ((os.path.abspath(os.path.dirname(sys.executable)))[0] + "/" + arguments.dbFile)
+  dbFile = (os.path.dirname(os.path.realpath(sys.argv[0])) + "/" + arguments.dbFile)
 if not os.path.isfile(dbFile):
   init_database(dbFile)
 
