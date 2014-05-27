@@ -4,6 +4,9 @@ import platform
 import sys
 arguments = get_input()
 
+#this will limit the number of files backed up unless -f is set
+breaker = 1000
+
 #create database where we store all file and upload info
 if platform.system() == "Windows":
   dbFile = (os.path.dirname(os.path.realpath(sys.argv[0])) + "\\" + arguments.dbFile)
@@ -12,7 +15,7 @@ else:
 if not os.path.isfile(dbFile):
   init_database(dbFile)
 
-#check for and display files with duplicate md5 hashes
+#check for and display files with duplicate sha256 hashes
 if arguments.dupcheck:
   dupes = dup_check(dbFile)
   for key, value in dupes.iteritems():
@@ -28,16 +31,25 @@ fileNames = dir_list(arguments.path)
 end = time.time() - start
 if arguments.verbose: print("took ") + str(end) + (" seconds")
 
-for files in fileNames:
-  try:
-    fileInfo = lookup_file_by_path(files,dbFile)
-    if fileInfo is None:
-      start = time.time()
-      attributes = get_attributes(files)
-      end = time.time() - start
-      if arguments.verbose: print("finished in ") + str(end) + (" seconds")
-      insert_file(attributes,dbFile)
-  except Exception, e:
-    print("error on " + files + " " + str(e))
+backupFiles = get_backup_list(fileNames,arguments.dbFile,arguments.verbose)
+
+#for files in fileNames:
+#  print "keeping " + files
+if len(backupFiles) > breaker and not arguments.force:
+  print str(len(backupFiles)) + " files found, more than breaker. Use -f to force"
+  exit(1)
+
+if arguments.backup:
+  for key, value in backupFiles.iteritems():
+    print "uploading " + files
+    response = upload_glacier(files,arguments.vault,dbFile)
+    print "upload finished at " + str(response[1]) + " Mbps with archiveID: " + response[0]
+
+
+
+
+
+
+
 
 
