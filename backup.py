@@ -33,16 +33,26 @@ if arguments.verbose: print("took ") + str(end) + (" seconds")
 
 backupFiles = get_backup_list(fileNames,arguments.dbFile,arguments.verbose)
 
-#for files in fileNames:
-#  print "keeping " + files
+changedFiles = get_changed_list(fileNames,arguments.dbFile,arguments.verbose)
+
+print str(len(fileNames)) + " files found"
+print str(len(backupFiles)) + " new files to be backed up"
+print str(len(changedFiles)) + " changed files to be deleted from glacier and backed up"
+
 if len(backupFiles) > breaker and not arguments.force:
   print str(len(backupFiles)) + " files found, more than breaker. Use -f to force"
   exit(1)
 
 if arguments.backup:
+  for key, value in changedFiles.iteritems():
+    print "deleting " + key
+    delete_backup(key,arguments.vault,dbFile)
+    update_changed(key,dbFile)
+    backupFiles[key] = changedFiles[key]
+
   for key, value in backupFiles.iteritems():
-    print "uploading " + files
-    response = upload_glacier(files,arguments.vault,dbFile)
+    print "uploading " + key
+    response = upload_glacier(key,arguments.vault,dbFile)
     print "upload finished at " + str(response[1]) + " Mbps with archiveID: " + response[0]
 
 

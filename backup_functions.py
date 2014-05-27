@@ -85,7 +85,7 @@ def get_attributes(fileName):
   hashes = boto.glacier.utils.compute_hashes_from_fileobj(fileObj)
   fileObj.close()
   attributes['sha256'] = hashes[0]
-  attributes['x-amz-sha256-tree'] = hashes[1]
+  attributes['x_amz_sha256_tree'] = hashes[1]
   attributes['modification_time'] = os.stat(fileName).st_mtime
   return attributes	
 
@@ -97,11 +97,11 @@ def init_database(dbFile):
                                    "name" TEXT,
                                    "size" INTEGER,
                                    "sha256" TEXT,
-                                   "x-amz-sha256-tree" TEXT,
+                                   "x_amz_sha256_tree" TEXT,
                                    "modification_time" TEXT,
                                    "uploaded" TEXT,
                                    "uploaded_at" TEXT,
-                                   "x-amz-archive-id" TEXT,
+                                   "x_amz_archive_id" TEXT,
                                    "vault" TEXT
                                   )
             ''')
@@ -112,9 +112,9 @@ def insert_file(attributes,dbFile):
   conn = sqlite3.connect(dbFile)
   c = conn.cursor()
   c.execute('''BEGIN''')
-  c.execute('''INSERT INTO files ("path", "name", "size", "sha256", "x-amz-sha256-tree", "modification_time")
+  c.execute('''INSERT INTO files ("path", "name", "size", "sha256", "x_amz_sha256_tree", "modification_time")
            VALUES (?,?,?,?,?,?)''', 
-           ( attributes['path'], attributes['name'], attributes['size'] , attributes['sha256'], attributes['x-amz-sha256-tree'], attributes['modification_time'] )
+           ( attributes['path'], attributes['name'], attributes['size'] , attributes['sha256'], attributes['x_amz_sha256_tree'], attributes['modification_time'] )
            )
   conn.commit()
   conn.close()
@@ -166,24 +166,32 @@ def get_description(path,dbFile):
   attributes[path]['path'] = data[1]
   attributes[path]['size'] = data[2]
   attributes[path]['modification_time'] = data[3]
-  return json.dumps(attributes)
   conn.close
+  return json.dumps(attributes)
+
 
 def upload_glacier(path,vault,dbFile):
   description = get_description(path,dbFile)
-  glacier_connection = boto.connect_glacier()
-  vaultObj = glacier_connection.get_vault(vault)
 
-  start = time.time()
-  archiveID = vaultObj.upload_archive(path,description)
-  elapsed = time.time() - start
-  transferred = os.path.getsize(path)
-  Mbps = ((transferred/elapsed)*8)/(1024*1024)
+  try:
+    glacier_connection = boto.connect_glacier()
+    vaultObj = glacier_connection.get_vault(vault)
+
+    start = time.time()
+    archiveID = vaultObj.upload_archive(path,description)
+    elapsed = time.time() - start
+    transferred = os.path.getsize(path)
+    Mbps = ((transferred/elapsed)*8)/(1024*1024)
+
+  except Exception, e:
+    print("error on " + path + " " + str(e))
+    archiveID = 'FAILED'
+    Mbps = 0
 
   #we need to make a record of everything that we uploaded to ease retrieval and prevent dup backups
   conn = sqlite3.connect(dbFile)
   c = conn.cursor()
-  c.execute('''UPDATE files SET uploaded = ?, uploaded_at = ?, 'x-amz-archive-id' = ?, vault = ? where path = ?''', ( "TRUE", str(time.time()), archiveID, vault, path ) )
+  c.execute('''UPDATE files SET uploaded = ?, uploaded_at = ?, x_amz_archive_id = ?, vault = ? where path = ?''', ( "TRUE", str(time.time()), archiveID, vault, path ) )
   conn.commit()
   conn.close
 
@@ -192,7 +200,7 @@ def upload_glacier(path,vault,dbFile):
 #for each file in the directories, check if in db if not get attributes and add to db
 def get_backup_list(fileNames,dbFile,verbosity):
   backupFiles = {}
-  for i, files in enumerate(fileNames):
+  for files in fileNames:
     try:
       fileInfo = lookup_file_by_path(files,dbFile)
       if not fileInfo:
@@ -210,4 +218,49 @@ def get_backup_list(fileNames,dbFile,verbosity):
       print("error on " + files + " " + str(e))
   
   return backupFiles
+
+def get_changed_list(fileNames,dbFile,verbosity):
+  changedFiles = {}
+  for files in fileNames:
+    try:
+      dbFileInfo = lookup_file_by_path(files,dbFile)
+      osFileSize = os.path.getsize(files)
+
+      if dbFileInfo['size'] != osFileSize and dbFileInfo['uploaded']:
+        changedFiles[files] = get_attributes(files)
+
+    except Exception, e:
+      print("error on " + files + " " + str(e))
+
+  return changedFiles
+
+def delete_backup(path,vault,dbFile):
+
+  conn = sqlite3.connect(dbFile)
+  c = conn.cursor()
+  c.execute('''select x_amz_archive_id from files where path = ?''', ( [path] ) )
+  archiveID = c.fetchone()
+
+  try:
+    glacier_connection = boto.connect_glacier()
+    vaultObj = glacier_connection.get_vault(vault)
+    response = vaultObj.delete_archive(archiveID)
+
+  except Exception, e:
+    print("error on " + path + " " + str(e))
+    response = str(e)
+
+  return (response)
+
+def update_changed(path,dbFile):
+  attributes = get_attributes(path)
+  conn = sqlite3.connect(dbFile)
+  c = conn.cursor()
+  c.execute('''BEGIN''')
+  c.execute('''UPDATE files SET uploaded = NULL, uploaded_at = NULL, x_amz_archive_id = NULL, vault = NULL where path = ?''', ( [path] ) )
+  c.execute('''UPDATE files SET size = ?, sha256 = ?, x_amz_sha256_tree = ?, modification_time =? where path =?''', ( attributes['size'] , attributes['sha256'], attributes['x_amz_sha256_tree'], attributes['modification_time'], path ))
+  conn.commit()
+  conn.close
+
+
 
