@@ -1,4 +1,4 @@
 *.pyc
 *.db
 *.log
-*.creds
+*dbCreds.py

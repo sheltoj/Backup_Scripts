@@ -3,13 +3,15 @@ import os
 import time
 import argparse
 import errno
-import sqlite3
 import time
 import collections
 import platform
 import boto
 import boto.glacier.utils
 import json
+import random
+import MySQLdb as mdb
+import MySQLdb.cursors
 from scandir import *
 
 def get_input():
@@ -19,13 +21,6 @@ def get_input():
                       action='store',
                       dest='path',
                       help='Directory to dupcheck'
-                      )
-  parser.add_argument(
-                      '-s',
-                      action='store',
-                      dest='dbFile',
-                      default='files.db',
-                      help='Use file other than files.db'
                       )
   parser.add_argument(
                       '--dupcheck',
@@ -74,8 +69,8 @@ def dir_list(path):
           fileNames.append(root + "/" + item)
   return fileNames
 
-def get_attributes(fileName):
-  print("getting attributes for " + fileName)
+def get_attributes(fileName,verbosity):
+  if verbosity: print("getting attributes for " + fileName)
   attributes = {}
   attributes['path'] = fileName
   attributes['name'] = os.path.basename(fileName)
@@ -89,78 +84,90 @@ def get_attributes(fileName):
   attributes['modification_time'] = os.stat(fileName).st_mtime
   return attributes	
 
-def init_database(dbFile):
-  conn = sqlite3.connect(dbFile)
+def check_table(dbCreds,vault):
+  conn = mdb.connect(dbCreds['server'] , dbCreds['user'], dbCreds['password'], dbCreds['database']);
   c = conn.cursor()
-  c.execute('''CREATE TABLE files (
-                                   "path" TEXT UNIQUE NOT NULL,
-                                   "name" TEXT,
-                                   "size" INTEGER,
-                                   "sha256" TEXT,
-                                   "x_amz_sha256_tree" TEXT,
-                                   "modification_time" TEXT,
-                                   "uploaded" TEXT,
-                                   "uploaded_at" TEXT,
-                                   "x_amz_archive_id" TEXT,
-                                   "vault" TEXT
+  c.execute('''SELECT COUNT(*) FROM information_schema.tables WHERE table_name = '%s' ''' % ( vault ) )
+  if c.fetchone()[0] == 1:
+    conn.close()
+    return True
+
+  conn.close()
+  return False
+
+def init_database(dbCreds,vault):
+  conn = mdb.connect(dbCreds['server'] , dbCreds['user'], dbCreds['password'], dbCreds['database']);
+  c = conn.cursor()
+  c.execute('''CREATE TABLE %s (
+                                   path char(255) UNIQUE NOT NULL,
+                                   name char(128),
+                                   size INTEGER,
+                                   sha256 char(255),
+                                   x_amz_sha256_tree char(255),
+                                   modification_time DATETIME,
+                                   uploaded char(32),
+                                   uploaded_at DATETIME,
+                                   x_amz_archive_id char(255),
+                                   vault char(128)
                                   )
-            ''')
+            ''' % ( vault ) )
   conn.commit
   conn.close
 
-def insert_file(attributes,dbFile):
-  conn = sqlite3.connect(dbFile)
+def insert_file(attributes,dbCreds,vault):
+  conn = mdb.connect(dbCreds['server'] , dbCreds['user'], dbCreds['password'], dbCreds['database']);
   c = conn.cursor()
   c.execute('''BEGIN''')
-  c.execute('''INSERT INTO files ("path", "name", "size", "sha256", "x_amz_sha256_tree", "modification_time")
-           VALUES (?,?,?,?,?,?)''', 
-           ( attributes['path'], attributes['name'], attributes['size'] , attributes['sha256'], attributes['x_amz_sha256_tree'], attributes['modification_time'] )
+  c.execute('''INSERT INTO {} (path, name, size, sha256, x_amz_sha256_tree, modification_time)
+           VALUES (%s,%s,%s,%s,%s,FROM_UNIXTIME(%s))'''.format(vault), 
+           ( attributes['path'], attributes['name'], attributes['size'] , attributes['sha256'], attributes['x_amz_sha256_tree'], (attributes['modification_time']) )
            )
   conn.commit()
   conn.close()
 
-def lookup_file_by_path(path,dbFile):
+def lookup_file_by_path(path,dbCreds,vault):
   attributes = {}
-  conn = sqlite3.connect(dbFile)
-  conn.row_factory = sqlite3.Row
+  conn = mdb.connect(dbCreds['server'] , dbCreds['user'], dbCreds['password'], dbCreds['database'], cursorclass=MySQLdb.cursors.DictCursor);
   c = conn.cursor()
-  c.execute('''SELECT * FROM files where path = ?''', ( [path] ) )
+  c.execute('''SELECT * FROM {} where path = "%s" '''.format(vault) % ( path ) )
   data = c.fetchone()
   if data:
     for key in data.keys():
       attributes[key] = data[key]
+  conn.close
   return attributes
-  conn.close
 
-def lookup_file_by_sha256(sha256,dbFile):
+
+def lookup_file_by_sha256(sha256,dbCreds,vault):
   matches = []
-  conn = sqlite3.connect(dbFile)
+  conn = mdb.connect(dbCreds['server'] , dbCreds['user'], dbCreds['password'], dbCreds['database']);
   c = conn.cursor()
-  for files in c.execute('''SELECT path, size, modification_time FROM files where sha256 = ?''', ( [sha256] ) ):
+  for files in c.execute('''SELECT path, size, modification_time FROM {} where sha256 = '%s' '''.format(vault) % ( sha256 ) ):
     matches.append(files)
-  return matches
   conn.close
+  return matches
 
-def dup_check(dbFile):
+
+def dup_check(dbCreds,vault):
   sha256Sums = []
   data = {}
-  conn = sqlite3.connect(dbFile)
+  conn = mdb.connect(dbCreds['server'] , dbCreds['user'], dbCreds['password'], dbCreds['database']);
   c = conn.cursor()
-  for sha256Sum in c.execute('''SELECT sha256 from files'''):
+  for sha256Sum in c.execute('''SELECT sha256 from {}}''').format(vault):
     sha256Sums.append(sha256Sum[0])
   conn.close
 
   collection = collections.Counter(sha256Sums)
   dupes = [i for i in collection if collection[i]>1]
   for sha256 in dupes:
-    data[sha256] = lookup_file_by_sha256(sha256,dbFile)
+    data[sha256] = lookup_file_by_sha256(sha256,dbCreds,vault)
   return data
 
-def get_description(path,dbFile):
+def get_description(path,dbCreds,vault):
   attributes = {path : {}}
-  conn = sqlite3.connect(dbFile)
+  conn = mdb.connect(dbCreds['server'] , dbCreds['user'], dbCreds['password'], dbCreds['database']);
   c = conn.cursor()
-  c.execute('''SELECT name, path, size, modification_time FROM files where path = ?''', ( [path] ) )
+  c.execute('''SELECT name, path, size, UNIX_TIMESTAMP(modification_time) AS modification_time FROM {} where path = '%s' '''.format(vault) % ( path ) )
   data = c.fetchone()
   attributes[path]['name'] = data[0]
   attributes[path]['path'] = data[1]
@@ -169,10 +176,11 @@ def get_description(path,dbFile):
   conn.close
   return json.dumps(attributes)
 
+def upload_glacier(path,vault,dbCreds):
+  description = get_description(path,dbCreds,vault)
 
-def upload_glacier(path,vault,dbFile):
-  description = get_description(path,dbFile)
-
+  #brief sleep to stagger thread connects and cut down on throttle messages
+  time.sleep(random.random())
   try:
     glacier_connection = boto.connect_glacier()
     vaultObj = glacier_connection.get_vault(vault)
@@ -184,61 +192,79 @@ def upload_glacier(path,vault,dbFile):
     Mbps = ((transferred/elapsed)*8)/(1024*1024)
 
   except Exception, e:
-    print("error on " + path + " " + str(e))
-    archiveID = 'FAILED'
-    Mbps = 0
+    if 'ThrottlingException' in str(e):
+      response = "ThrottlingException"
+      return (response)
+    else:
+      print("error on " + path + " " + str(e))
+      archiveID = 'FAILED'
+      Mbps = 0
 
   #we need to make a record of everything that we uploaded to ease retrieval and prevent dup backups
-  conn = sqlite3.connect(dbFile)
+  conn = mdb.connect(dbCreds['server'] , dbCreds['user'], dbCreds['password'], dbCreds['database']);
   c = conn.cursor()
-  c.execute('''UPDATE files SET uploaded = ?, uploaded_at = ?, x_amz_archive_id = ?, vault = ? where path = ?''', ( "TRUE", str(time.time()), archiveID, vault, path ) )
+  start = time.time()
+  c.execute('''BEGIN''')
+  c.execute('''UPDATE {} SET uploaded = '%s', uploaded_at = FROM_UNIXTIME(%s), x_amz_archive_id = '%s', vault = '%s' where path = '%s' '''.format(vault) % ( "TRUE", str(time.time()), archiveID, vault, path ) )
+  elapsed = time.time() - start
   conn.commit()
   conn.close
 
   return (archiveID,Mbps)
 
+def upload_glacier_list(paths,vault,dbCreds,verbosity):
+  for path in paths:
+    response = upload_glacier(path,vault,dbCreds)
+    while str(response) == "ThrottlingException":
+      if verbosity: print "throttled, waiting"
+      response = upload_glacier(path,vault,dbCreds)
+      time.sleep(random.random() + 1)
+
+    if verbosity: print path + " upload finished at " + str(response[1]) + " Mbps with archiveID: " + response[0]
+
 #for each file in the directories, check if in db if not get attributes and add to db
-def get_backup_list(fileNames,dbFile,verbosity):
-  backupFiles = {}
+def get_backup_list(fileNames,dbCreds,verbosity,vault):
+  backupFiles = []
   for files in fileNames:
     try:
-      fileInfo = lookup_file_by_path(files,dbFile)
+      fileInfo = lookup_file_by_path(files,dbCreds,vault)
       if not fileInfo:
         start = time.time()
-        attributes = get_attributes(files)
+        attributes = get_attributes(files,verbosity)
         end = time.time() - start
         if verbosity: print("finished in ") + str(end) + (" seconds")
-        insert_file(attributes,dbFile)
-        fileInfo = lookup_file_by_path(files,dbFile)
+        insert_file(attributes,dbCreds,vault)
+        fileInfo = lookup_file_by_path(files,dbCreds,vault)
 
       if not fileInfo['uploaded']:
-        backupFiles[fileInfo['path']] = fileInfo
+        backupFiles.append(fileInfo['path'])
 
     except Exception, e:
       print("error on " + files + " " + str(e))
   
   return backupFiles
 
-def get_changed_list(fileNames,dbFile,verbosity):
-  changedFiles = {}
+def get_changed_list(fileNames,dbCreds,verbosity,vault):
+  changedFiles = []
   for files in fileNames:
     try:
-      dbFileInfo = lookup_file_by_path(files,dbFile)
+      dbFileInfo = lookup_file_by_path(files,dbCreds,vault)
       osFileSize = os.path.getsize(files)
 
       if dbFileInfo['size'] != osFileSize and dbFileInfo['uploaded']:
-        changedFiles[files] = get_attributes(files)
+        changedFile = get_attributes(files,verbosity)
+        changedFiles.append( changedFile['path'] )
 
     except Exception, e:
       print("error on " + files + " " + str(e))
 
   return changedFiles
 
-def delete_backup(path,vault,dbFile):
+def delete_backup(path,vault,dbCreds,verbosity):
 
-  conn = sqlite3.connect(dbFile)
+  conn = mdb.connect(dbCreds['server'] , dbCreds['user'], dbCreds['password'], dbCreds['database']);
   c = conn.cursor()
-  c.execute('''select x_amz_archive_id from files where path = ?''', ( [path] ) )
+  c.execute('''select x_amz_archive_id from {} where path = '%s' '''.format(vault) % ( path ) )
   archiveID = c.fetchone()
 
   try:
@@ -250,17 +276,32 @@ def delete_backup(path,vault,dbFile):
     print("error on " + path + " " + str(e))
     response = str(e)
 
+  update_changed(path,dbCreds,verbosity,vault)
+
+  conn.close
   return (response)
 
-def update_changed(path,dbFile):
-  attributes = get_attributes(path)
-  conn = sqlite3.connect(dbFile)
+def delete_backup_list(paths,vault,dbCreds,verbosity):
+  for path in paths:
+    delete_backup(path,vault,dbCreds,verbosity)
+    if verbosity: print ("deleted file " + path + " from db")
+
+
+def update_changed(path,dbCreds,verbosity,vault):
+  attributes = get_attributes(path,verbosity)
+  conn = mdb.connect(dbCreds['server'] , dbCreds['user'], dbCreds['password'], dbCreds['database']);
   c = conn.cursor()
   c.execute('''BEGIN''')
-  c.execute('''UPDATE files SET uploaded = NULL, uploaded_at = NULL, x_amz_archive_id = NULL, vault = NULL where path = ?''', ( [path] ) )
-  c.execute('''UPDATE files SET size = ?, sha256 = ?, x_amz_sha256_tree = ?, modification_time =? where path =?''', ( attributes['size'] , attributes['sha256'], attributes['x_amz_sha256_tree'], attributes['modification_time'], path ))
+  c.execute('''UPDATE {} SET uploaded = NULL, uploaded_at = NULL, x_amz_archive_id = NULL, vault = NULL where path = '%s' '''.format(vault) % ( path ) )
+  c.execute('''UPDATE {} SET size = '%s', sha256 = '%s', x_amz_sha256_tree = '%s', modification_time = FROM_UNIXTIME(%s) where path = '%s' '''.format(vault) % ( attributes['size'] , attributes['sha256'], attributes['x_amz_sha256_tree'], attributes['modification_time'], path ))
   conn.commit()
   conn.close
 
-
+def split_seq(seq, size):
+  random.shuffle(seq)
+  newseq = []
+  splitsize = 1.0/size*len(seq)
+  for i in range(size):
+    newseq.append(seq[int(round(i*splitsize)):int(round((i+1)*splitsize))])
+  return newseq
 
