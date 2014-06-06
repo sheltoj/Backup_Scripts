@@ -219,13 +219,14 @@ def upload_glacier_list(queue,vault,dbCreds,verbosity):
       return 
     fileName = queue.get()
     try:
+      response = upload_glacier(fileName,vault,dbCreds)
       while str(response) == "ThrottlingException":
         if verbosity: print "throttled, waiting"
-        response = upload_glacier(path,vault,dbCreds)
+        response = upload_glacier(fileName,vault,dbCreds)
         time.sleep(random.random() + 1)
+      if verbosity: print fileName + " upload finished at " + str(response[1]) + " Mbps with archiveID: " + response[0]
     except Exception, e:
-      print("error on " + files + " " + str(e))
-    if verbosity: print path + " upload finished at " + str(response[1]) + " Mbps with archiveID: " + response[0]
+      print("error on " + fileName + " " + str(e))
 
 #for each file in the directories, check if in db if not get attributes and add to db
 def get_backup_list(queue,dbCreds,verbosity,vault):
@@ -249,7 +250,7 @@ def get_backup_list(queue,dbCreds,verbosity,vault):
         backupFiles.append(fileInfo['path'])
 
     except Exception, e:
-      print("error on " + files + " " + str(e))
+      print("error on " + fileName + " " + str(e))
 
   return backupFiles
 

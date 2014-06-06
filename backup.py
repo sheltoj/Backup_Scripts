@@ -95,7 +95,7 @@ if arguments.backup:
       queue.put(fileName)
    
     for i in range(threads):
-      t = threading.Thread(target=upload_glacier_list, args=(chunk,arguments.vault,dbCreds,arguments.verbose))
+      t = threading.Thread(target=upload_glacier_list, args=(queue,arguments.vault,dbCreds,arguments.verbose))
       activeThreads.append(t)
       t.start()
 
