@@ -4,11 +4,12 @@ from dbCreds import *
 import platform
 import sys
 import threading
+import Queue
 arguments = get_input()
 
 #this will limit the number of files backed up unless -f is set
 breaker = 1000
-threads = 6
+threads = 4
 
 if not check_table(dbCreds,arguments.vault):
   print "table doesn't exist for vault " + arguments.vault + " creating."
@@ -32,17 +33,21 @@ if arguments.verbose: print("took ") + str(end) + (" seconds")
 
 if len(fileNames) < threads: threads = len(fileNames)
 
+queue = Queue.Queue()
+activeThreads = []
+
 if arguments.verbose: print "getting backup list"
-fileNameChunks = split_seq(fileNames,threads)
-threads = []
-for chunk in fileNameChunks:
-  t = threading.Thread(target=get_backup_list, args=(chunk,dbCreds,arguments.verbose,arguments.vault))
-  threads.append(t)
+
+for fileName in fileNames:
+  queue.put(fileName)
+
+for i in range(threads):
+  t = threading.Thread(target=get_backup_list, args=(queue,dbCreds,arguments.verbose,arguments.vault))
+  activeThreads.append(t)
   t.start()
 
-for thread in threads:
-  thread.join()
-if arguments.verbose: print "finished getting backup list"
+for activeThread in activeThreads:
+  activeThread.join()
 
 if arguments.backup:
   backupFiles = []
@@ -66,28 +71,36 @@ if arguments.backup:
   if len(changedFiles) > 0:
     print ("deleting changed files")
     if len(changedFiles) < threads: threads = len(changedFiles)
-    changedNameChunks = split_seq(changedFiles,threads)
-    threads = []
-    for chunk in changedNameChunks:
-      t = threading.Thread(target=delete_backup_list, args=(chunk,arguments.vault,dbCreds,arguments.verbose))
-      threads.append(t)
+
+    activeThreads = []
+   
+    for fileName in changedFiles:
+      queue.put(fileName)
+   
+    for i in range(threads):
+      t = threading.Thread(target=delete_backup_list, args=(queue,arguments.vault,dbCreds,arguments.verbose))
+      activeThreads.append(t)
       t.start()
 
-    for thread in threads:
-      thread.join()
+    for activeThread in activeThreads:
+      activeThread.join()
 
   if len(backupFiles) > 0:
     print ("uploading files")
     if len(backupFiles) < threads: threads = len(backupFiles)
-    backupFileChunks = split_seq(backupFiles,threads)
-    threads = []
-    for chunk in backupFileChunks:
+
+    activeThreads = []
+   
+    for fileName in backupFiles:
+      queue.put(fileName)
+   
+    for i in range(threads):
       t = threading.Thread(target=upload_glacier_list, args=(chunk,arguments.vault,dbCreds,arguments.verbose))
-      threads.append(t)
+      activeThreads.append(t)
       t.start()
 
-    for thread in threads:
-      thread.join()
+    for activeThread in activeThreads:
+      activeThread.join()
 
 exit(0)
 

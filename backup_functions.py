@@ -12,6 +12,7 @@ import json
 import random
 import MySQLdb as mdb
 import MySQLdb.cursors
+import Queue
 from scandir import *
 
 def get_input():
@@ -109,7 +110,7 @@ def init_database(dbCreds,vault):
                                    uploaded_at DATETIME,
                                    x_amz_archive_id char(255),
                                    vault char(128)
-                                  )
+                                  ) TYPE=innodb
             ''' % ( vault ) )
   conn.commit
   conn.close
@@ -212,36 +213,44 @@ def upload_glacier(path,vault,dbCreds):
 
   return (archiveID,Mbps)
 
-def upload_glacier_list(paths,vault,dbCreds,verbosity):
-  for path in paths:
-    response = upload_glacier(path,vault,dbCreds)
-    while str(response) == "ThrottlingException":
-      if verbosity: print "throttled, waiting"
-      response = upload_glacier(path,vault,dbCreds)
-      time.sleep(random.random() + 1)
-
+def upload_glacier_list(queue,vault,dbCreds,verbosity):
+  while True:
+    if queue.empty() == True:
+      return 
+    fileName = queue.get()
+    try:
+      while str(response) == "ThrottlingException":
+        if verbosity: print "throttled, waiting"
+        response = upload_glacier(path,vault,dbCreds)
+        time.sleep(random.random() + 1)
+    except Exception, e:
+      print("error on " + files + " " + str(e))
     if verbosity: print path + " upload finished at " + str(response[1]) + " Mbps with archiveID: " + response[0]
 
 #for each file in the directories, check if in db if not get attributes and add to db
-def get_backup_list(fileNames,dbCreds,verbosity,vault):
+def get_backup_list(queue,dbCreds,verbosity,vault):
   backupFiles = []
-  for files in fileNames:
+
+  while True:
+    if queue.empty() == True:
+      return 
+    fileName = queue.get()
     try:
-      fileInfo = lookup_file_by_path(files,dbCreds,vault)
+      fileInfo = lookup_file_by_path(fileName,dbCreds,vault)
       if not fileInfo:
         start = time.time()
-        attributes = get_attributes(files,verbosity)
+        attributes = get_attributes(fileName,verbosity)
         end = time.time() - start
         if verbosity: print("finished in ") + str(end) + (" seconds")
         insert_file(attributes,dbCreds,vault)
-        fileInfo = lookup_file_by_path(files,dbCreds,vault)
+        fileInfo = lookup_file_by_path(fileName,dbCreds,vault)
 
       if not fileInfo['uploaded']:
         backupFiles.append(fileInfo['path'])
 
     except Exception, e:
       print("error on " + files + " " + str(e))
-  
+
   return backupFiles
 
 def get_changed_list(fileNames,dbCreds,verbosity,vault):
@@ -281,11 +290,16 @@ def delete_backup(path,vault,dbCreds,verbosity):
   conn.close
   return (response)
 
-def delete_backup_list(paths,vault,dbCreds,verbosity):
-  for path in paths:
-    delete_backup(path,vault,dbCreds,verbosity)
-    if verbosity: print ("deleted file " + path + " from db")
-
+def delete_backup_list(queue,vault,dbCreds,verbosity):
+  while True:
+    if queue.empty() == True:
+      return 
+    fileName = queue.get()
+    try:
+      delete_backup(fileName,vault,dbCreds,verbosity)
+      if verbosity: print ("deleted file " + path + " from db")
+    except Exception, e:
+      print("error on " + files + " " + str(e))
 
 def update_changed(path,dbCreds,verbosity,vault):
   attributes = get_attributes(path,verbosity)
