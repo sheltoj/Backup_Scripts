@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 import os
-import time
+import math
 import argparse
 import errno
 import time
@@ -14,6 +14,7 @@ import MySQLdb as mdb
 import MySQLdb.cursors
 import Queue
 from scandir import *
+from filechunkio import FileChunkIO
 
 def get_input():
   parser = argparse.ArgumentParser(description='Glacier backup and dupcheck script')
@@ -39,7 +40,7 @@ def get_input():
                       '-b',
                       action='store',
                       dest='backup',
-                      help='backup data, options are currently just glacier'
+                      help='backup data, options are s3 or glacier'
                       )
   parser.add_argument(
                       '-V',
@@ -102,7 +103,7 @@ def init_database(dbCreds,vault):
   c.execute('''CREATE TABLE %s (
                                    path char(255) UNIQUE NOT NULL,
                                    name char(128),
-                                   size INTEGER,
+                                   size BIGINT,
                                    sha256 char(255),
                                    x_amz_sha256_tree char(255),
                                    modification_time DATETIME,
@@ -138,7 +139,6 @@ def lookup_file_by_path(path,dbCreds,vault):
   conn.close
   return attributes
 
-
 def lookup_file_by_sha256(sha256,dbCreds,vault):
   matches = []
   conn = mdb.connect(dbCreds['server'] , dbCreds['user'], dbCreds['password'], dbCreds['database']);
@@ -147,7 +147,6 @@ def lookup_file_by_sha256(sha256,dbCreds,vault):
     matches.append(files)
   conn.close
   return matches
-
 
 def dup_check(dbCreds,vault):
   sha256Sums = []
@@ -180,8 +179,6 @@ def get_description(path,dbCreds,vault):
 def upload_glacier(path,vault,dbCreds):
   description = get_description(path,dbCreds,vault)
 
-  #brief sleep to stagger thread connects and cut down on throttle messages
-  time.sleep(random.random())
   try:
     glacier_connection = boto.connect_glacier()
     vaultObj = glacier_connection.get_vault(vault)
@@ -228,6 +225,71 @@ def upload_glacier_list(queue,vault,dbCreds,verbosity):
     except Exception, e:
       print("error on " + fileName + " " + str(e))
 
+def upload_s3(path,bucket,dbCreds):
+  archiveID = path
+  description = get_description(path,dbCreds,bucket)
+  descDict = json.loads(description)
+  metadata = descDict[path]
+
+  #brief sleep to stagger thread connects and cut down on throttle messages
+  time.sleep(random.random())
+  try:
+    s3_connection = boto.connect_s3()
+    bucketObj = s3_connection.get_bucket(bucket)
+
+    start = time.time()
+    size = os.path.getsize(path)
+    uploadObj = bucketObj.initiate_multipart_upload(path,metadata=metadata)
+    chunkSize = 52428800
+    chunkCount = int(math.ceil(size / chunkSize))
+
+    for i in range(chunkCount + 1):
+      offset = chunkSize * i
+      bytes = min(chunkSize, size - offset)
+      with FileChunkIO(path, 'r', offset=offset, bytes=bytes) as fp:
+        uploadObj.upload_part_from_file(fp, part_num=i + 1)
+
+    response = uploadObj.complete_upload()
+
+    elapsed = time.time() - start
+    Mbps = ((size/elapsed)*8)/(1024*1024)
+
+  except Exception, e:
+    if 'ThrottlingException' in str(e):
+      response = "ThrottlingException"
+      return (response)
+    else:
+      print("error on " + path + " " + str(e))
+      archiveID = 'FAILED'
+      Mbps = 0
+
+  #we need to make a record of everything that we uploaded to ease retrieval and prevent dup backups
+  conn = mdb.connect(dbCreds['server'] , dbCreds['user'], dbCreds['password'], dbCreds['database']);
+  c = conn.cursor()
+  start = time.time()
+  c.execute('''BEGIN''')
+  c.execute('''UPDATE {} SET uploaded = '%s', uploaded_at = FROM_UNIXTIME(%s), x_amz_archive_id = '%s', vault = '%s' where path = '%s' '''.format(bucket) % ( "TRUE", str(time.time()), archiveID, bucket, path ) )
+  elapsed = time.time() - start
+  conn.commit()
+  conn.close
+
+  return (archiveID,Mbps)
+
+def upload_s3_list(queue,bucket,dbCreds,verbosity):
+  while True:
+    if queue.empty() == True:
+      return 
+    fileName = queue.get()
+    try:
+      response = upload_s3(fileName,bucket,dbCreds)
+      while str(response) == "ThrottlingException":
+        if verbosity: print "throttled, waiting"
+        response = upload_s3(fileName,bucket,dbCreds)
+        time.sleep(random.random() + 1)
+      if verbosity: print fileName + " upload finished at " + str(response[1]) + " Mbps with archiveID: " + response[0]
+    except Exception, e:
+      print("error on " + fileName + " " + str(e))
+
 #for each file in the directories, check if in db if not get attributes and add to db
 def get_backup_list(queue,dbCreds,verbosity,vault):
   backupFiles = []
@@ -246,24 +308,30 @@ def get_backup_list(queue,dbCreds,verbosity,vault):
         insert_file(attributes,dbCreds,vault)
         fileInfo = lookup_file_by_path(fileName,dbCreds,vault)
 
-      if not fileInfo['uploaded']:
-        backupFiles.append(fileInfo['path'])
-
     except Exception, e:
       print("error on " + fileName + " " + str(e))
 
-  return backupFiles
+def check_change(path,dbCreds,vault):
+  changed = False
+  try:
+    dbFileInfo = lookup_file_by_path(path,dbCreds,vault)
+    osFileSize = os.path.getsize(path)
+    if dbFileInfo['size'] != osFileSize and dbFileInfo['uploaded']:
+      changed = True
 
-def get_changed_list(fileNames,dbCreds,verbosity,vault):
-  changedFiles = []
-  for files in fileNames:
+  except Exception, e:
+    print("error on " + files + " " + str(e))
+
+  return changed
+
+def get_changed_list(queue,fileNames,dbCreds,verbosity,vault,changedFiles):
+  while True:
+    if queue.empty() == True:
+      return 
+    fileName = queue.get()
     try:
-      dbFileInfo = lookup_file_by_path(files,dbCreds,vault)
-      osFileSize = os.path.getsize(files)
-
-      if dbFileInfo['size'] != osFileSize and dbFileInfo['uploaded']:
-        changedFile = get_attributes(files,verbosity)
-        changedFiles.append( changedFile['path'] )
+      if check_change(fileName,dbCreds,vault):
+        changedFiles.append(fileName)
 
     except Exception, e:
       print("error on " + files + " " + str(e))
@@ -300,7 +368,7 @@ def delete_backup_list(queue,vault,dbCreds,verbosity):
       delete_backup(fileName,vault,dbCreds,verbosity)
       if verbosity: print ("deleted file " + path + " from db")
     except Exception, e:
-      print("error on " + files + " " + str(e))
+      print("error on " + fileName + " " + str(e))
 
 def update_changed(path,dbCreds,verbosity,vault):
   attributes = get_attributes(path,verbosity)
